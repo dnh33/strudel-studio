@@ -1,0 +1,9 @@
+node_modules/
+tests/.shots/
+tests/.build/
+dist/
+*.log
+native/build/
+native/build.log
+/Strudel Studio.exe
+/VST3/

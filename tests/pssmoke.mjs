@@ -1,0 +1,12 @@
+import { chromium } from 'playwright-core';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--autoplay-policy=no-user-gesture-required', `--proxy-server=${process.env.HTTPS_PROXY}`, '--proxy-bypass-list=localhost;127.0.0.1'] });
+const page = await browser.newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+await page.goto('http://localhost:5190/');
+await page.waitForFunction(() => window.studioEngine?.status === 'ready', null, { timeout: 90000 });
+await page.mouse.click(600, 400);
+await page.keyboard.press('Space');
+await page.waitForTimeout(3000);
+console.log(JSON.stringify(await page.evaluate(() => ({ playing: window.studioEngine.playing, pos: window.studioEngine.position(), err: window.studioEngine.lastError }))), 'errors:', errors);
+await browser.close();
