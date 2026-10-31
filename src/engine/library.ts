@@ -24,10 +24,18 @@ const DRUM_NAMES: Record<string, string> = {
   tb: 'Tambourine', fx: 'FX', misc: 'Misc',
 };
 
-export const SAMPLE_MAPS = [
+/**
+ * VCSL audio is served by jsDelivr, pinned to a commit. raw.githubusercontent.com sends
+ * `content-disposition: attachment; filename=...` without quotes, and Chromium (also WebView2)
+ * rejects that header when the path holds a comma (ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION):
+ * 22 VCSL instruments (ocarina, kalimba, shakers, steinway, snares...) were silent. jsDelivr sends no such header.
+ */
+export const VCSL_BASE = 'https://cdn.jsdelivr.net/gh/sgossner/VCSL@c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/';
+
+export const SAMPLE_MAPS: { file: string; label: string; drums?: boolean; base?: string }[] = [
   { file: 'tidal-drum-machines.json', label: 'Drum Machines', drums: true },
   { file: 'dirt-samples.json', label: 'Dirt Samples' },
-  { file: 'vcsl.json', label: 'VCSL Instruments' },
+  { file: 'vcsl.json', label: 'VCSL Instruments', base: VCSL_BASE },
   { file: 'piano.json', label: 'Piano' },
   { file: 'mridangam.json', label: 'Mridangam' },
 ];

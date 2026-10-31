@@ -78,13 +78,14 @@ export function createClip(init: Omit<Clip, 'id'>): Clip {
 }
 
 export const NUM_INSERTS = 16;
+export const PROJECT_VERSION = 2;
 export const NUM_TRACKS = 16;
 
 export function createEmptyProject(name = 'Untitled'): Project {
   const now = Date.now();
   const p: Project = {
     format: 'strudel-studio',
-    version: 1,
+    version: PROJECT_VERSION,
     name,
     author: '',
     bpm: 128,

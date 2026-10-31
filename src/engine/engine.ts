@@ -13,6 +13,7 @@ import { MixerGraph } from './graph';
 import { SAMPLE_MAPS, type SampleMap } from './library';
 import { encodeWav } from './wav';
 import { midiToStrudel } from '../model/util';
+import { noteShift, stepNote } from '../model/samplePitch';
 import { loadUserSamples, type UserSample } from './userSamples';
 import { registerNativeSound, beginNativeRender, finishNativeRender } from '../native/nativeStudio';
 
@@ -202,7 +203,7 @@ class Engine {
         try {
           const json = await fetch(base + m.file).then((r) => r.json());
           this.sampleMaps[m.file] = json;
-          await samples(json, json._base, { prebake: true });
+          await samples(json, m.base ?? json._base, { prebake: true });
         } catch (e) {
           console.warn('could not load sample map', m.file, e);
         }
@@ -414,10 +415,13 @@ class Engine {
       await this.resume();
       let content: string;
       if (ch.kind === 'code') content = `(${ch.code})`;
-      else if (ch.kind === 'sample' && midi === undefined) content = `s(${JSON.stringify(ch.sound)})`;
-      else {
+      else if (ch.kind === 'sample' && midi === undefined) {
+        const sn = stepNote(ch);
+        content = `s(${JSON.stringify(ch.sound)})${sn === null ? '' : `.note(${sn})`}`;
+      } else {
         const m = midi ?? ch.rootNote;
-        const transposed = m + Math.round(ch.params.transpose ?? 0);
+        // same pitch rule as the compiler: transpose once, and correct sample maps whose labels are off
+        const transposed = m + (ch.kind === 'sample' ? noteShift(ch) : Math.round(ch.params.transpose ?? 0));
         content = `note("${midiToStrudel(transposed)}")${ch.kind === 'sample' ? `.s(${JSON.stringify(ch.sound)})` : ''}`;
       }
       const pat = await this.channelPreviewPattern(project, ch, content);

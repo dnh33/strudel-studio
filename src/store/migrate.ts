@@ -1,5 +1,6 @@
 import type { Project } from '../model/types';
-import { createEmptyProject, createInsert, createTrack, NUM_INSERTS, NUM_TRACKS } from '../model/factory';
+import { createEmptyProject, createInsert, createTrack, NUM_INSERTS, NUM_TRACKS, PROJECT_VERSION } from '../model/factory';
+import { labelOffset } from '../model/samplePitch';
 
 /** validates and fills in missing fields of a loaded project */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,5 +35,17 @@ export function migrateProject(raw: any): Project {
   p.bpm = Number(raw.bpm) || 120;
   p.beatsPerBar = Number(raw.beatsPerBar) || 4;
   p.swing = Number(raw.swing) || 0;
+  // v1 -> v2: piano-roll notes on sample sounds with off-by-an-octave labels (most of VCSL) now show the
+  // pitch you hear. Move v1 notes up by that offset, so old projects keep sounding exactly the same.
+  if ((Number(raw.version) || 1) < 2) {
+    for (const ch of p.channels) {
+      const off = labelOffset(ch);
+      if (!off) continue;
+      p.patterns = p.patterns.map((pt) =>
+        pt.notes[ch.id]?.length ? { ...pt, notes: { ...pt.notes, [ch.id]: pt.notes[ch.id].map((n) => ({ ...n, key: n.key + off })) } } : pt,
+      );
+    }
+  }
+  p.version = PROJECT_VERSION;
   return p;
 }

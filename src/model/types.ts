@@ -140,7 +140,8 @@ export interface MixerInsert {
 
 export interface Project {
   format: 'strudel-studio';
-  version: 1;
+  /** 1: original; 2: piano-roll notes on mislabelled sample maps show the real pitch (see store/migrate) */
+  version: 1 | 2;
   name: string;
   author: string;
   bpm: number;

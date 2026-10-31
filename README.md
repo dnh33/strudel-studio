@@ -13,7 +13,8 @@ nothing to install) and opens the studio in your browser at `http://localhost:51
 the best audio performance. Click anywhere once to enable audio, then press **Space**.
 
 An internet connection is needed the first time sounds play — like strudel.cc, the drum machines, Dirt-Samples,
-VCSL instruments and GM soundfonts stream from GitHub. Your own imported samples stay in the browser.
+VCSL instruments and GM soundfonts stream from GitHub (VCSL through the jsDelivr CDN, pinned to a commit). Your own
+imported samples stay in the browser.
 
 ## The native app: real VST3 plug-ins, ASIO and MIDI (Windows)
 
