@@ -6,6 +6,7 @@ import { stepsPerBar, ticksPerBar } from './types';
 import { CHANNEL_CORE_AUTOMATION, CHANNEL_PARAMS, CHANNEL_PARAM_MAP, VOWELS, fromNorm, type ParamDef } from './paramDefs';
 import { gcd, ident, midiToStrudel, num, uniqueIdent, RESERVED } from './util';
 import { getSteps } from './factory';
+import { noteShift, stepNote } from './samplePitch';
 import { PLUGIN_SDK_SOURCE, singleQuoted } from '../plugins/sdk';
 
 export interface PluginInfo {
@@ -219,7 +220,7 @@ export function channelContent(project: Project, pattern: Pattern, ch: Channel, 
 
   const notes = pattern.notes[ch.id] ?? [];
   if (notes.length > 0) {
-    const voices = notesToVoices(notes, pattern.bars * ticksPerBar(project), ticksPerBar(project), transpose);
+    const voices = notesToVoices(notes, pattern.bars * ticksPerBar(project), ticksPerBar(project), noteShift(ch));
     const sampleSuffix = ch.kind === 'sample' ? `.s(${JSON.stringify(ch.sound)})` : '';
     const exprs = voices.map((v) => `note("${v.seq}")${v.velocity}${sampleSuffix}${slow}`);
     if (exprs.length === 1) return exprs[0];
@@ -230,7 +231,10 @@ export function channelContent(project: Project, pattern: Pattern, ch: Channel, 
   const token = ch.kind === 'sample' ? ch.sound : midiToStrudel(ch.rootNote + transpose);
   const { seq, velocity } = stepsToMini(project, pattern, ch, token);
   const fn = ch.kind === 'sample' ? 's' : 'note';
-  return `${fn}("${seq}")${velocity}${slow}${swingSuffix(project)}`;
+  // sample steps are repitched with a note (36 = unchanged), so the channel's .speed() still multiplies with it
+  const sn = stepNote(ch);
+  const repitch = sn === null ? '' : `.note(${sn})`;
+  return `${fn}("${seq}")${velocity}${repitch}${slow}${swingSuffix(project)}`;
 }
 
 function indent(s: string, n: number) {
@@ -300,23 +304,14 @@ function channelChain(project: Project, ch: Channel, opts: CompileOptions, warni
   parts.push(`.gain(${num(ch.volume)})`);
   if (Math.abs(ch.pan - 0.5) > 0.001) parts.push(`.pan(${num(ch.pan)})`);
 
-  // pitch for sample steps: transpose -> speed
-  const transpose = Math.round(ch.params.transpose ?? 0);
+  // transpose is applied in the content (notes shifted, sample steps get .note()), never here:
+  // a .speed() on the chain would multiply with the note and transpose note channels twice
   for (const def of CHANNEL_PARAMS) {
     if (def.kinds && !def.kinds.includes(ch.kind)) continue;
-    let v = ch.params[def.key];
-    if (def.key === 'speed' && ch.kind === 'sample' && transpose !== 0) {
-      // speed is combined with transpose for step-sequenced samples (notes are transposed directly)
-      continue;
-    }
+    const v = ch.params[def.key];
     if (v === undefined || v === null || !isFinite(v)) continue;
     const c = paramValueCode(def, v);
     if (c) parts.push(c);
-  }
-  if (ch.kind === 'sample' && (transpose !== 0 || ch.params.speed !== undefined)) {
-    // only affects step content (note content is transposed directly & overrides pitch)
-    const sp = (ch.params.speed ?? 1) * Math.pow(2, transpose / 12);
-    if (Math.abs(sp - 1) > 1e-4) parts.push(`.speed(${num(sp, 4)})`);
   }
   if (ch.kind === 'plugin') {
     if (!plugin) warnings.push(`Plugin "${ch.sound}" used by channel "${ch.name}" is not installed`);

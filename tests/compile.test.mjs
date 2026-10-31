@@ -1,5 +1,6 @@
 // Node test: compiles demo projects and evaluates the generated code with the real Strudel engine.
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 execSync('node tests/build.mjs', { stdio: 'inherit' });
 const M = await import('./.build/model.mjs?' + Date.now());
 import * as core from '@strudel/core';
@@ -109,6 +110,70 @@ for (const demo of M.DEMOS) {
   const exp = M.compileProject(p, { mode: 'pattern', patternId: pt.id, forExport: true, getPlugin: M.getPluginInfo });
   ok(!exp.code.includes('"native"') && exp.code.includes('VST3: Test Synth'), 'export uses a stand-in synth for VST3 channels');
   await evalCode(exp.code, 'export with VST3 stand-in');
+}
+
+// ---------------------------------------------------------------- sample pitch (transpose, VCSL labels)
+{
+  console.log('\n== Sample pitch');
+  const midiOf = (n) => (typeof n === 'number' ? n : core.noteToMidi(n));
+  const one = (sound, params, content) => {
+    const p = M.createEmptyProject('pitch');
+    const ch = M.createChannel(p, { kind: 'sample', sound, params });
+    p.channels.push(ch);
+    const pt = p.patterns[0];
+    if (content === 'notes') pt.notes[ch.id] = [{ id: 'n', key: 62, start: 0, len: 96, vel: 1 }];
+    else pt.steps[ch.id] = [1, ...Array(15).fill(0)];
+    return { p, pt };
+  };
+  const firstHap = async ({ p, pt }, label) => {
+    const res = M.compileProject(p, { mode: 'pattern', patternId: pt.id, getPlugin: M.getPluginInfo });
+    const pat = await evalCode(res.code, label);
+    return onsets(pat, 0, 1)[0]?.value ?? {};
+  };
+
+  // transpose on a note channel moves the notes once, not twice (no extra .speed on top)
+  let h = await firstHap(one('piano', { transpose: -12 }, 'notes'), 'piano notes, transpose -12');
+  ok(midiOf(h.note) === 50 && (h.speed === undefined || h.speed === 1), `note channel: transpose applied once (note ${h.note}, speed ${h.speed})`);
+  // superdough plays a plain sample at speed * 2^((note - 36) / 12)
+  const rate = (h) => (h.speed ?? 1) * 2 ** (((h.note === undefined ? 36 : midiOf(h.note)) - 36) / 12);
+  // transpose on a step channel still repitches the sample
+  h = await firstHap(one('bd', { transpose: 7 }, 'steps'), 'bd steps, transpose 7');
+  ok(Math.abs(rate(h) - 2 ** (7 / 12)) < 1e-3, `step channel: transpose repitches (rate ${rate(h).toFixed(4)})`);
+  // an explicit speed still multiplies with transpose on steps
+  h = await firstHap(one('bd', { transpose: 12, speed: 0.5 }, 'steps'), 'bd steps, transpose 12 + speed 0.5');
+  ok(Math.abs(rate(h) - 1) < 1e-3, `step channel: speed x transpose (rate ${rate(h).toFixed(4)})`);
+  // and speed alone still reaches note channels
+  h = await firstHap(one('piano', { speed: 0.5 }, 'notes'), 'piano notes, speed 0.5');
+  ok(midiOf(h.note) === 62 && h.speed === 0.5, `note channel keeps an explicit speed (note ${h.note}, speed ${h.speed})`);
+
+  // VCSL melodic sets sound an octave above their labels: the piano roll pitch is what you hear
+  h = await firstHap(one('vibraphone', {}, 'notes'), 'vibraphone note D4');
+  ok(midiOf(h.note) === 50, `vibraphone: D4 in the roll asks the map for its D3 label, which sounds D4 (${h.note})`);
+  h = await firstHap(one('piano', {}, 'notes'), 'piano note D4');
+  ok(midiOf(h.note) === 62, `piano (correct labels) is not shifted (${h.note})`);
+
+  // old projects keep their sound: v1 note channels on shifted sounds move up by the offset, once
+  const old = one('vibraphone', {}, 'notes').p;
+  old.version = 1;
+  const chId = old.channels[0].id;
+  const m1 = M.migrateProject(JSON.parse(JSON.stringify(old)));
+  ok(m1.version === 2 && m1.patterns[0].notes[chId][0].key === 74, `v1 vibraphone notes migrate +12 (${m1.patterns[0].notes[chId][0].key})`);
+  const m2 = M.migrateProject(JSON.parse(JSON.stringify(m1)));
+  ok(m2.patterns[0].notes[chId][0].key === 74, 'migration runs once');
+  const pianoOld = one('piano', {}, 'notes').p;
+  pianoOld.version = 1;
+  const m3 = M.migrateProject(JSON.parse(JSON.stringify(pianoOld)));
+  ok(m3.patterns[0].notes[pianoOld.channels[0].id][0].key === 62, 'v1 piano notes are not moved');
+
+  // VCSL map: every path exists under a VCSL top folder, and audio is not fetched from
+  // raw.githubusercontent.com, whose unquoted content-disposition breaks paths with commas in Chromium
+  const vcsl = JSON.parse(readFileSync(new URL('../public/samplemaps/vcsl.json', import.meta.url), 'utf8'));
+  const top = /^(Aerophones|Chordophones|Electrophones|Idiophones|Membranophones)\//;
+  const bad = Object.entries(vcsl).filter(([k]) => !k.startsWith('_'))
+    .filter(([, v]) => (Array.isArray(v) ? v : Object.values(v)).flat().some((s) => !top.test(s))).map(([k]) => k);
+  ok(bad.length === 0, `every VCSL path starts with a VCSL top folder (bad: ${bad.join(', ') || 'none'})`);
+  const vcslMap = M.SAMPLE_MAPS.find((m) => m.file === 'vcsl.json');
+  ok(vcslMap?.base?.startsWith('https://cdn.jsdelivr.net/gh/sgossner/VCSL@') && /@[0-9a-f]{40}\/$/.test(vcslMap.base), `VCSL audio comes from a pinned jsDelivr commit (${vcslMap?.base})`);
 }
 
 // notes -> mini

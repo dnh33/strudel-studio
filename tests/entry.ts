@@ -5,3 +5,5 @@ export * from '../src/model/types';
 export * from '../src/model/paramDefs';
 export * from '../src/plugins/registry';
 export { PLUGIN_SDK_SOURCE, PLUGIN_TEMPLATE } from '../src/plugins/sdk';
+export { migrateProject } from '../src/store/migrate';
+export { SAMPLE_MAPS } from '../src/engine/library';
